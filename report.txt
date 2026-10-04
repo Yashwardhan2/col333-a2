@@ -1,0 +1,96 @@
+<YOUR NAME>, 2024CS10300
+
+=== PART A: Treasure Hunt (exact factored value iteration) ===
+
+Model. The state is (treasure mask, ship cell, pirate-1 cell, pirate-2 cell); the two
+pirate regions are the 4-connected components of the pirate area. From the layout and
+probability files we build the exact model env.py uses: the ship takes the intended
+direction w.p. ps and each other direction w.p. (1-ps)/3 (staying put if blocked); each
+pirate moves independently by its own stay-or-move matrix inside its region; outcomes
+are checked in env.py's order (pirate hit, then fort, then treasure); both ends are
+terminal.
+
+Algorithm. Synchronous value iteration, with every Bellman backup factored into three
+cheap stages instead of one dense transition matrix:
+ 1. Landing values U = R + gamma*V(next) for every landing cell and pirate pair
+    (collecting a treasure clears its bit; fort and pirate hits are terminal).
+ 2. Pirate expectation: two single-threaded einsums with P1 and P2, since the pirates
+    move independently. Cost O(S*(R1+R2)) instead of O(S*R1*R2).
+ 3. Ship expectation: since Q[a] = q*sum_d G_d + (ps-q)*G_a with q=(1-ps)/3, max and
+    argmax over actions need only a running sum and a running best G_a.
+V is stored mask-first as V[mask, cell, r1, r2], so each treasure layer is contiguous.
+
+Anytime behaviour and time safety.
+ - First we solve the pirate-free relaxation over (mask, cell) in milliseconds. Its
+   values and greedy actions, broadcast over all pirate positions, are the starting V
+   and policy. A sensible policy exists even if no exact sweep finishes, and VI still
+   converges to the same V* from this start.
+ - Sweeps stop at convergence (max|dV| < 1e-9), at 0.85*T, or when the next sweep is
+   predicted (1.5 x the last sweep time) to overrun.
+ - learn_policy catches run.py's TimeoutException; V and policy are only ever replaced
+   by complete arrays, so the last complete policy survives instead of scoring None.
+ - get_action is an O(1) table lookup (about 1 us), with a safe fallback for inputs
+   env.py should never produce.
+
+Validation. Against brute-force VI on the unfactored MDP built from env.py's own
+functions: max |dV| <= 4e-9 on tests 1-3 and <= 1e-7 on 40 random layouts, with no
+suboptimal actions; Monte-Carlo returns from env.py match V(start). Scores (1000
+runs): TC1 6.07 (baseline ~6.0), TC2 1.73 (~1.7), TC3 7.35; realistic grids converge in
+under 1 s. 48 random grids (N up to 30, up to 31.5M states) ran under SIGALRM with no
+timeouts or crashes. Gauss-Seidel, solving layer by layer by treasure mask, and a
+sparse pirate stencil were all measured and found slower in wall-clock time with numpy.
+
+=== PART B: Highway (tabular Q-learning) ===
+
+Representation. Q(s, a) over the observation (speed, lane, min_dist[0..3]): 4*4*5^4 =
+10,000 states x 5 actions, Q0 = 0, stored as plain Python lists (cheaper than numpy for
+5-element rows). Every training episode uses a fresh HighwayEnv(), as evaluation does
+(reset() spawns traffic around the old car position). Only env.step() rewards are used;
+no reward values are assumed anywhere, and gamma comes from the constructor.
+
+Collision credit. env.step() checks for a collision BEFORE applying the chosen action,
+so the penalty returned with done belongs to the previous action. Each update is
+delayed by one step: at done, the previous (s, a) gets target r_t + gamma*r_{t+1} (no
+bootstrap) and the done step's own (s, a), whose action never ran, is not updated. At
+the 1000-step limit run.py's scoring also stops, so the same target is exact there.
+
+Schedules (all chosen by measurement: >= 3 runs x 300 episodes per setting).
+ - Epsilon-greedy, eps linear from 1 to 0.01 over the whole budget T. Training stops
+   at 0.85*T, so the last eps is about 0.16. Exploring to the end clearly beat faster
+   decays (reaching 0.01 at 0.2*T: 2.70 vs 3.87 at T=60).
+ - Step size alpha linear from 0.5 to 0.25 over the first 3M environment steps, then
+   constant. The best constant alpha depends on the budget (0.5 at T=60, 0.3 at
+   T=240); counting experience in steps rather than seconds gives a large alpha early
+   and a smaller one with more data. It beat every constant and time-based schedule.
+
+Why a large alpha matters (main finding). Every non-collision reward is positive, so
+true values are about 3-12 at gamma=0.99 while Q starts at 0. With bootstrapping that
+pessimistic bias shrinks only by a factor (1 - alpha*(1-gamma)) per update (about 1000
+updates at alpha=0.1), while the non-bootstrapped crash target is learned in about 10
+updates. Rarely visited fast states therefore look worse than they are and the agent
+stays slow. A diagnostic run with Q0 = +3 (not used, since it assumes reward
+knowledge) raised the T=60 score from 3.93 to 6.52 at alpha=0.1, confirming this. A
+large alpha propagates the positive values much faster. Argmax ties pick action 0
+(speed up), which adds a little hidden optimism early in training.
+
+Learned behaviour. At gamma=0.99 the policy drives fast and accepts late crashes: the
+median crash step is about 350-410 and a crash costs only about 0.4 of discounted
+return. Its undiscounted return is also higher than a cautious policy's (47-48 vs
+41-45). At gamma=0.999 the same code learns to drive cautiously (about 7% crashes); at
+gamma <= 0.95 it races, which is optimal because the score is settled early.
+
+Time safety. The deadline uses time.monotonic(). learn_policy catches run.py's
+TimeoutException, and Q is updated one element at a time, so it is always valid: in 300
+random interruptions no exception escaped and no Q value was invalid.
+
+Results (gamma=0.99, mean of 3 runs x 300 episodes):
+  T (s)  :   5     10    20    30    60    240
+  score  :  2.8   3.2   4.0   4.2   5.3   7.0-7.1   (TA baseline at 240 s: ~6)
+Scores rise with T at every gamma tested (0.5 to 0.999). The community checker's
+180 Part B cases ran with no errors or timeouts.
+
+Tried and rejected (measured): constant eps 0.2-0.5; a fully random start; eps or alpha
+decaying over a fixed small number of steps (worse from T=20 up); training to 0.95*T;
+a no-op default for unseen states (unseen states occur in < 0.02% of steps). An
+optimistic start computed from the agent's own probe episodes gained about +1 at
+T=240 but lost 0.3 at T=60, and was dropped.
