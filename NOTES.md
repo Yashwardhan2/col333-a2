@@ -170,3 +170,38 @@ file and in `tools/` is for our own use. Keep them out of `submission.zip`.
 **The "more optimal" margins** are often +50 to +770, so the reference agent is weak on these adversarial settings.
 
 **Caveat:** the checker uses `signal.setitimer` and SIGALRM, as does `run.py`, so on Windows it must be run under WSL.
+
+## Part B status (B1–B3 done)
+
+**B1:** the simulator facts were verified earlier (`review/gemini_round2_assessment.md`).
+
+**B2 (`part_b/agent.py`):**
+- Flat Q-table and update counts, `(10,000 states × 5 actions)`. The index is (speed, lane, min_dist[0..3]) in mixed radix.
+- The sizes are read from `env`'s attributes. The skeleton's docstring allows this; they are the observation's sizes, not its dynamics.
+- Each training episode runs in a fresh `HighwayEnv()`, and the agent learns only through `step()`.
+
+**B3:**
+- ε-greedy Q-learning with constant α = 0.1, and ε linear from 1 to 0.01, reaching 0.01 at 0.8·T. Q₀ = 0, and γ comes from the constructor.
+- **Collision credit:** each update is delayed one step. When `done` arrives, the final reward is credited to the previous (s, a) with no bootstrap, and the done step's own (s, a) is not updated. At the 1000-step limit this drops one bootstrap per surviving episode, which is negligible and needs no reward constants.
+- There is a basic 0.85·T clock guard (B5 refines it). `get_action` is a direct argmax over Q, so there's no freeze step.
+
+**Tests:**
+- `tools/test_b_updates.py` runs a scripted fake environment and checks the exact Q values:
+
+  | Ending | Credited value | Collided-state Q |
+  |---|---|---|
+  | crash | 0.2 + 0.9·(−5) = −4.3 | stays 0 |
+  | 1000-step limit | 0.47 | n/a |
+
+- `tools/eval_b.py` mirrors `run.py` without GIFs and adds diagnostics:
+
+  | T | Replicates | Scores | Mean | Throughput | Crash rate | Mean speed index |
+  |---|---|---|---|---|---|---|
+  | 60 | 3 | 3.75, 3.70, 3.86 | 3.77 | ~23.5k steps/s | 17–30% | 0.2–0.3 |
+  | 240 | 2 | 4.95, 4.67 | 4.81 | — | 16–28% | 0.6–0.8 |
+
+  The speed index is mostly 0, i.e. speed 1.
+- Never-updated states are reached in only 0.00–0.02% of evaluation steps, so the default action for unvisited states is irrelevant.
+- The official `run.py` at T=60 runs fine (2 runs, 4.08) and writes GIFs. The car hugs an edge lane at speed 1 and covers about 353 units in 1000 steps.
+
+**Gap to the TA's ~6:** at speed 1 the most an episode can return is about 3, so B4 must make the car drive faster *and* crash less.
