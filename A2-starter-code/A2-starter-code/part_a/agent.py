@@ -19,8 +19,8 @@ class Agent:
             prob_file: Path to the file containing environment probabilities.
 
         Parses the layout and probabilities and precomputes the factored
-        transition model (ship landing table, ship wind matrix, one pirate
-        matrix per pirate) and the reward structure. No solving happens here.
+        transition model (ship landing table, one pirate matrix per pirate)
+        and the reward structure. No solving happens here.
         """
         self._read_layout(layout_file)
         self._read_probs(prob_file)
@@ -29,6 +29,8 @@ class Agent:
         # value function and greedy policy, indexed [mask, ship cell, p1 idx, p2 idx]
         self.V = np.zeros(self.shape)
         self.policy = np.zeros(self.shape, dtype=np.int8)
+        # pirate-free greedy policy [mask, ship cell], only used as a fallback
+        self.base_policy = np.zeros(self.shape[:2], dtype=np.int8)
 
     # ------------------------------------------------------------------ #
     # parsing (mirrors env.py exactly)
@@ -148,11 +150,12 @@ class Agent:
     # value iteration
     # ------------------------------------------------------------------ #
 
-    def _landing_values(self, V):
+    def _landing_values(self, V, pirates=True):
         """
         U[m, s', r1', r2'] = reward + gamma * V(next state) for landing on ship
         cell s' with the pirates at r1', r2', starting the step with mask m.
         Priority matches env.step: pirate hit, then fort, then treasure.
+        With pirates=False, V is indexed [m, s] only and pirates are ignored.
         """
         g = self.gamma
         U = g * V
@@ -165,6 +168,8 @@ class Agent:
         # fort is terminal
         U[:, self.fort_cells] = self.R_fort
         U += self.R_step
+        if not pirates:
+            return U
         # landing on a pirate's new cell is terminal (overrides everything)
         hit = self.R_step + self.R_pirate
         r1 = np.arange(self.R1)
@@ -220,19 +225,43 @@ class Agent:
         self.V = V_new
         return delta
 
+    def _relaxed_init(self, deadline):
+        """
+        Solve the pirate-free version of the MDP over (mask, ship cell) and use
+        it as the starting V and policy for every pirate configuration. It is
+        tiny, so it gives a sensible policy within milliseconds, and the exact
+        sweeps that follow converge to the same V* from any starting point.
+        """
+        Vr = np.zeros(self.shape[:2])
+        arg = np.zeros(self.shape[:2], dtype=np.int8)
+        while _time.time() < deadline:
+            Vn, arg = self._ship_expectation(self._landing_values(Vr, pirates=False))
+            delta = float(np.max(np.abs(Vn - Vr)))
+            Vr = Vn
+            if delta < 1e-6:
+                break
+        # build complete arrays before rebinding so a timeout never leaves them half-written
+        self.V = np.broadcast_to(Vr[:, :, None, None], self.shape).copy()
+        self.policy = np.broadcast_to(arg[:, :, None, None], self.shape).copy()
+        self.base_policy = arg
+
     # ------------------------------------------------------------------ #
     # API used by run.py
     # ------------------------------------------------------------------ #
+
+    def _mask(self, treasure_locations):
+        present = {tuple(t) for t in treasure_locations}
+        m = 0
+        for t, loc in enumerate(self.treasures):
+            if loc in present:
+                m |= 1 << t
+        return m
 
     def _encode(self, ship_location, pirate_locations, treasure_locations):
         s = self.cell_idx[tuple(ship_location)]
         r1 = self.region_idx[0][tuple(pirate_locations[0])]
         r2 = self.region_idx[1][tuple(pirate_locations[1])]
-        m = 0
-        for t, loc in enumerate(self.treasures):
-            if loc in treasure_locations:
-                m |= 1 << t
-        return m, s, r1, r2
+        return self._mask(treasure_locations), s, r1, r2
 
     def get_action(self, ship_location, pirate_locations, treasure_locations) -> int:
         """
@@ -260,7 +289,16 @@ class Agent:
             This function may be called multiple times after
             `learn_policy()` has been executed.
         """
-        return int(self.policy[self._encode(ship_location, pirate_locations, treasure_locations)])
+        try:
+            return int(self.policy[self._encode(ship_location, pirate_locations, treasure_locations)])
+        except (KeyError, IndexError, TypeError):
+            # a state env.py should never produce: return a legal action rather
+            # than crash the evaluation, using the pirate-free policy if possible
+            try:
+                return int(self.base_policy[self._mask(treasure_locations),
+                                            self.cell_idx[tuple(ship_location)]])
+            except (KeyError, IndexError, TypeError):
+                return UP
 
     def learn_policy(self, time):
         """
@@ -276,15 +314,23 @@ class Agent:
             None
         """
         start = _time.time()
-        # basic guard against run.py's SIGALRM; refined in step A5
+        # stop before run.py's SIGALRM: don't start a sweep that may not finish
         deadline = start + 0.85 * time
         tol = 1e-9
         last = 0.0
-        while True:
-            t0 = _time.time()
-            if t0 + 1.5 * last > deadline:
-                break
-            delta = self._sweep()
-            last = _time.time() - t0
-            if delta < tol:
-                break
+        try:
+            self._relaxed_init(min(deadline, start + 0.1 * time))
+            while True:
+                t0 = _time.time()
+                if t0 + 1.5 * last > deadline:
+                    break
+                delta = self._sweep()
+                last = _time.time() - t0
+                if delta < tol:
+                    break
+        except Exception as e:
+            # safety net: if run.py's alarm fires anyway (e.g. the first sweep
+            # alone exceeds the budget), keep the last complete policy instead
+            # of letting the whole run score None
+            if type(e).__name__ not in ('TimeoutException', 'TimeoutError'):
+                raise

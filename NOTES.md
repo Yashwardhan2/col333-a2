@@ -55,13 +55,14 @@ file and in `tools/` is for our own use. Keep them out of `submission.zip`.
 - The stock Part B agent crashes (`get_action` returns `None`, which makes `env.act` raise). That is expected.
 
 **Part A**
-- **A2:** V is stored mask-first as `V[mask, cell, r1, r2]`, not `(cells, R1, R2, 4)`. Each treasure layer is then one contiguous block, which is what A5's layered solve needs. Cells are the non-land cells.
+- **A2:** V is stored mask-first as `V[mask, cell, r1, r2]`, not `(cells, R1, R2, 4)`, so each treasure layer is one contiguous block. Cells are the non-land cells.
 - **A4:** the pirate expectation uses `np.einsum(..., optimize=False)`, which runs numpy's single-threaded loops, instead of matmul or tensordot (OpenBLAS can multithread). The ship stage is fused: Q[a] = q·Σ_d G_d + (ps−q)·G_a, giving max and argmax without stacking 4×4 arrays.
-- **A5:**
-  - Keep the per-sweep clock guard.
-  - Also catch `run.py`'s `TimeoutException` (match by class name) as a safety net. That keeps the last complete policy instead of scoring `None`.
+- **A5** (revised after the Gemini review; see `review/gemini_feedback_assessment.md`):
+  - **Done, P1:** before the exact sweeps, solve the pirate-free MDP over (mask, cell) with the exact wind, fort, treasure and step rules. Its values and greedy actions, broadcast over all pirate configurations, are the starting V and policy. It costs milliseconds and is capped at 10% of T.
+  - **Done, P2:** `learn_policy` catches `run.py`'s `TimeoutException` (matched by class name) as a safety net, so the last complete policy survives instead of scoring `None`. `self.V` and `self.policy` are only ever rebound to complete arrays.
+  - Keep the per-sweep clock guard: stop at 0.85·T, and don't start a sweep predicted (1.5 × the last sweep's time) to overrun.
+  - **Dropped after measurement:** layered solving by treasure mask (2–3× more sweeps and the worst anytime quality, because the start state is in the last layer), Gemini's BFS initialization (no gain), Gauss–Seidel (slower in wall-clock time with numpy), and the sparse pirate stencil (2–3× slower than einsum).
   - Anytime quality matters, since the 20% is ranked against other submissions at small budgets.
-  - Known gap: on a 30x30 grid with very large pirate regions (31.5M states, ~4 s per sweep), 60 s isn't enough for value to propagate from the fort to the start. Layered solving or a better initial V should fix this. Real tests are said to use small regions, where a sweep takes milliseconds.
 - **A7:** compare against the new baselines (6.0 and 1.7), using about 1000 evaluation runs (`tools/eval_a.py`).
 
 **Part B**
@@ -69,10 +70,11 @@ file and in `tools/` is for our own use. Keep them out of `submission.zip`.
 - **B3:**
   - Use the `discount_factor` passed to `Agent`, never a hard-coded 0.99.
   - Don't detect collisions by the −5 reward value. Use `done` before our own 1000-step counter runs out; a `done` exactly at the cap is truncation, so bootstrap there.
-- **B4:** no reward-derived optimistic init. Use either a generic constant or a value set from rewards actually observed during training.
+- **B2 sizing:** the table is 4·4·5⁴ = 10,000 states × 5 actions, i.e. 50,000 entries.
+- **B4:** no reward-derived optimistic init (TA rule), so no constant like 5.0. If we try optimism, derive it from rewards observed during training (for example, the largest per-step reward seen so far / (1−γ), with the γ given to the agent), and compare it against zero init. Every non-collision reward is positive, so zero init already makes unvisited actions look worse than visited ones.
 - **B6:** target is ~6 at 240 s. Also test smaller T and other γ values.
 
-## Part A status (A1–A4 done)
+## Part A status (A1–A7 done)
 
 - `part_a/agent.py` implements exact factored value iteration.
 - **Validation:**
@@ -86,3 +88,191 @@ file and in `tools/` is for our own use. Keep them out of `submission.zip`.
   | TC1 | 6.09 ± 0.04 | 6.068 | ~6.0 | < 0.1 s |
   | TC2 | 1.70 ± 0.06 | 1.747 | ~1.7 | 0.2 s |
   | TC3 | 7.04 ± 0.22 | 7.149 | n/a | < 0.1 s |
+
+- **After A5** (P1 relaxed pre-solve + P2 timeout safety net), single core, same harness, old agent = before A5:
+
+  | Layout | T | Old agent | New agent |
+  |---|---|---|---|
+  | TC1 / TC2 / TC3 (1000 runs) | 60 / 900 / 60 | 6.09 / 1.70 / 7.04 | 6.07 / 1.73 / 7.00 (same optimum, within noise) |
+  | TC1, TC2, small 30×30, maze 30×30 | 1 | all converge within 1 s | same |
+  | corridors 30×30 (2.9M states) | 1 / 2 / 5 / 20 | −5.00 / −5.00 / −5.00 / 1.35 | **1.10 / 1.39 / 1.29 / 1.39** |
+  | blocks 30×30 (31.5M states) | 5 | **`None` (timeout)** | **1.91** (safety net kept the pre-solve policy) |
+  | blocks 30×30 | 10 / 60 | −4.97 / −5.00 | **1.94 / 1.90** |
+
+- The official `run.py` was run on test 3 at T=60 (score 7.35, 10 GIFs) and on test 1 at T=1 (score 6.15).
+- **Known limitation:** Python runs the alarm handler only after the current numpy call returns. When the safety net is needed, `learn_policy` can therefore overrun T by up to the length of one numpy call. On the 31.5M-state grid we saw 0.4 s and 2.3 s; the bound there is about 3 s. On realistic grids these calls take milliseconds. Proposal P4 in `review/gemini_round2_assessment.md` would cut this.
+
+- **A6 (`get_action`):**
+  - O(1) dict lookups, about 1 µs per call (`env.step` takes 5.7 µs).
+  - The treasure mask is now built from `tuple()`-converted locations, so lists or tuples and any order give the same state. Before this, list inputs silently produced the wrong mask.
+  - An unrecognizable input (a pirate outside its region, the ship on land, `None`) returns the pirate-free policy's action, or UP, instead of raising. A crash there would make the whole evaluation score `None`.
+- **A7 (validation):**
+  - **Brute-force and fuzz** checks re-run on the final code: exact.
+  - **Public tests, final code (1000 runs):** TC1 6.07 ± 0.04, TC2 1.73 ± 0.06, TC3 7.35 ± 0.21.
+  - **`tools/stress_a.py`:**
+    - Inputs: 40 random layouts that `env.py` accepts (N 10–30, pirate regions of 1–60 cells, random ps, γ, rewards and pirate probabilities). They ran at T = 20 s, plus 8 more at N = 30 and T = 5 s, under SIGALRM.
+    - Results: no timeouts or crashes, and learning always stopped by 0.85·T. All 34 converged cases match Monte-Carlo returns from the real `env.py` within 3 standard errors. Peak memory was 402 MB, at 7.9M states.
+  - **Python version:** `vermin` reports that `agent.py` needs only Python 3.0+, so 3.10 is fine. The only imports are `time` and `numpy`.
+  - **GIF check:** the test 2 GIF shows a sensible route (times its crossing of the pirate columns, collects both treasures, reaches the fort in 102 steps).
+- **Open option (not done):** the time guard (0.85·T, with a 1.5× prediction of the next sweep) is conservative on huge grids. Seed 507 stopped at 1.8 s of 5 s. It could be loosened now that the safety net exists. This is raised as a question in the round-2 review document.
+- **Review documents:**
+  - `review/part_a_progress_for_review.md`: round 1, a snapshot from before A5.
+  - `review/gemini_feedback_assessment.md`: the round-1 assessment.
+  - `review/part_a_round2_for_gemini.md`: round 2, current code plus the Part B plan and starter `env.py`.
+  - `review/gemini_round2_assessment.md`: the round-2 assessment, including Part B simulator findings (collision timing, `min_dist`=1 aliasing) and the first Q-learning prototypes (about 4.9 at T=240, against the TA's ~6).
+
+## Decisions after review round 3 (Gemini's reply to the round-2 assessment)
+
+**Part A**
+- **P3 and P4 skipped (agreed).** Realistic grids converge in under 1 s even at T=1. The grader uses `run.py`'s `TimeoutException`, which we already catch.
+- **Before submission:**
+  - Do one run in a clean Python 3.10 environment with the exact pinned `requirments.txt`. So far we've only run Python 3.11 with headless OpenCV, plus a static `vermin` check.
+  - Write the report.
+
+**Part B, adopted for when we start**
+- **B-i, collision credit:** when `done` arrives with the collision reward, update the *previous* (s, a) with target r_t + γ·r_{t+1}, using the **observed** reward (never a hard-coded −5). Don't update the collision step's own (s, a), because that action never ran.
+- Reconfirm the +0.2 gain with at least 3 seeds per setting.
+
+**Part B, untested ideas (tune them only after diagnosing where score is lost)**
+- **α:** constant 0.1 (measured better than 1/(1+n)^0.6). Also try 0.15, or a 0.2 → 0.05 step schedule.
+- **ε:** linear decay to 0.01 by 0.75–0.8·T. Mind the interplay with when training stops.
+- **Unvisited states:** default action derived from learned data only. Hand-written rules would encode reward knowledge, which is forbidden. Gemini's rule was also wrong, because `min_dist`=0 means *no car ahead*. First measure how often greedy play even reaches unvisited states.
+- **Diagnose first:** with the fix, evaluation crashed in 22–25% of episodes. Break the score down into speed vs crashes vs crash timing.
+- **Throughput:** about 24k steps/s now. Flat indices and pre-drawn random numbers mean more updates per second, which helps the small-budget 20%.
+- **Time budget:** if `get_action` reads Q directly, there's no freeze step, so with the timeout safety net we can train until about 0.95·T.
+- **Noise:** a single run has about ±0.1 CI and seeds differ by about 0.2. Use at least 3 seeds and at least 300 evaluation episodes per comparison.
+
+## External checker (AbhinavPJ/COL333-A2-CHECKER), Part A
+
+**Run:**
+- Command: `python3 <checker>/benchmark.py evaluate --part a --project-dir <repo>/A2-starter-code`. The `--project-dir` must be the folder that *contains* `A2-starter-code/part_a`, which in our repo is the outer `A2-starter-code`.
+- Use **evaluate only**. The README's `overwrite` step replaces the author's reference scores with your own agent's, after which `evaluate` just compares the agent with itself.
+
+**What the shipped references contain:**
+- 3 suites × 60 adversarial cases.
+- Grid sizes 5–30, γ ∈ {0, 0.5, 0.9, 0.99, 0.999, 0.9999}, ps ∈ {0, 0.05, 0.5, 0.8, 0.99, 1}, rewards up to ±100.
+- Each case is trained for 10 s and scored on 10 seeded episodes. "matched" means within 1e-5 relative.
+
+**Result (cloud, final Part A code):**
+
+| Suite | Matched | More optimal | Suboptimal | Errors |
+|---|---|---|---|---|
+| 001 | 54 | 4 | 2 | 0 |
+| 002 | 35 | 24 | 1 | 0 |
+| 003 | 37 | 23 | 0 | 0 |
+| **Total (180)** | **126** | **51** | **3** | **0** |
+
+**The 3 "suboptimal" cases** (`tools/analyze_checker_a.py`):
+- In all 3, our VI converged and our expected score equals the optimum (the 2N² cap costs at most 0.025).
+- 001-0027 (ps = 0.05, very noisy) and 001-0034 lost on 10-sample noise.
+- 002-0044 has two tied optimal actions at the start state, and the reference took the other one.
+
+**The "more optimal" margins** are often +50 to +770, so the reference agent is weak on these adversarial settings.
+
+**Caveat:** the checker uses `signal.setitimer` and SIGALRM, as does `run.py`, so on Windows it must be run under WSL.
+
+## Part B status (B1–B3 done)
+
+**B1:** the simulator facts were verified earlier (`review/gemini_round2_assessment.md`).
+
+**B2 (`part_b/agent.py`):**
+- Flat Q-table and update counts, `(10,000 states × 5 actions)`. The index is (speed, lane, min_dist[0..3]) in mixed radix.
+- The sizes are read from `env`'s attributes. The skeleton's docstring allows this; they are the observation's sizes, not its dynamics.
+- Each training episode runs in a fresh `HighwayEnv()`, and the agent learns only through `step()`.
+
+**B3:**
+- ε-greedy Q-learning with constant α = 0.1, and ε linear from 1 to 0.01, reaching 0.01 at 0.8·T. Q₀ = 0, and γ comes from the constructor.
+- **Collision credit:** each update is delayed one step. When `done` arrives, the final reward is credited to the previous (s, a) with no bootstrap, and the done step's own (s, a) is not updated. At the 1000-step limit this drops one bootstrap per surviving episode, which is negligible and needs no reward constants.
+- There is a basic 0.85·T clock guard (B5 refines it). `get_action` is a direct argmax over Q, so there's no freeze step.
+
+**Tests:**
+- `tools/test_b_updates.py` runs a scripted fake environment and checks the exact Q values:
+
+  | Ending | Credited value | Collided-state Q |
+  |---|---|---|
+  | crash | 0.2 + 0.9·(−5) = −4.3 | stays 0 |
+  | 1000-step limit | 0.47 | n/a |
+
+- `tools/eval_b.py` mirrors `run.py` without GIFs and adds diagnostics:
+
+  | T | Replicates | Scores | Mean | Throughput | Crash rate | Mean speed index |
+  |---|---|---|---|---|---|---|
+  | 60 | 3 | 3.75, 3.70, 3.86 | 3.77 | ~23.5k steps/s | 17–30% | 0.2–0.3 |
+  | 240 | 2 | 4.95, 4.67 | 4.81 | — | 16–28% | 0.6–0.8 |
+
+  The speed index is mostly 0, i.e. speed 1.
+- Never-updated states are reached in only 0.00–0.02% of evaluation steps, so the default action for unvisited states is irrelevant.
+- The official `run.py` at T=60 runs fine (2 runs, 4.08) and writes GIFs. The car hugs an edge lane at speed 1 and covers about 353 units in 1000 steps.
+
+**Gap to the TA's ~6:** at speed 1 the most an episode can return is about 3, so B4 must make the car drive faster *and* crash less.
+
+## Part B review round 1 (Gemini): outcome
+
+Full write-up: `review/gemini_partb_round1_assessment.md`.
+
+- **"Slow driving gets you rear-ended": false.** Cars more than 0.5 behind are deleted every step. Crashes happen at speeds 2–4, never at 1, and mostly at 3–4 (where the agent spends only 1–4% of its time). Crash causes: caught up with a car ahead in our lane, or drove through it, about 85–100%; lane changes 0–13%; genuine rear-ends 0.
+- **"Decay ε by 0.2–0.3·T": false and harmful.**
+
+  | ε reaches 0.01 at | T=60 mean | T=240 mean |
+  |---|---|---|
+  | 0.8·T (current) | 3.87 | 5.21 |
+  | 0.3·T | 3.31 | 4.46 |
+  | 0.2·T | 2.70 | 4.01 |
+
+  More exploration is better.
+- **Correct:** the collision credit handles the `min_dist`=1 aliasing, the credit is exact for any γ, and dropping one bootstrap at the 1000-step limit is negligible.
+- **To test in B4:**
+  - ε floor at 0.05 or 0.1, and decay reaching it at 1.0·T;
+  - throughput;
+  - α between 0.05 and 0.2;
+  - a no-op default for never-updated states (A/B test only).
+
+## Part B B4 (tuning) — done
+
+All runs: γ=0.99, 300 greedy evaluation episodes, at least 3 replicates per setting and budget. Settings were interleaved in the job queue so that load drift hits all of them equally.
+
+**(a) Exploration.** ε is linear from 1 to 0.01, reaching it at **1.0·T**, so ε is still about 0.16 when training stops at 0.85·T.
+
+| ε reaches its floor at | T=60 | T=240 |
+|---|---|---|
+| 0.8·T (old) | 3.64 | 4.65 |
+| **1.0·T** | **3.89** | **4.66** |
+| floor 0.05 | 3.68 | 4.48 |
+| floor 0.1 | 3.61 | 4.74 |
+| 1.5·T | 3.68 | 4.91 (not better than 1.0·T) |
+
+**(b) Throughput.** The Q-table and update counts are plain Python lists, giving about +6% steps/s. The bound is about +8%, because the simulator's own `step()` is about 90% of the per-step cost (about 30–44 µs).
+
+**(c) Step size α, the big lever.**
+- Constant α:
+
+  | α | 0.05 | 0.1 | 0.15 | 0.2 | 0.3 | 0.4 | 0.5 |
+  |---|---|---|---|---|---|---|---|
+  | T=60 | 3.38 | 3.83 | 4.11 | 4.03–4.10 | 4.52 | 5.00 | 5.24 |
+  | T=240 | 4.21 | 4.81 | 6.30 | 6.76–6.78 | 7.00 | 6.03 | 5.71 |
+
+  So the best constant depends on the budget.
+- Schedules:
+
+  | Schedule | T=60 | T=240 |
+  |---|---|---|
+  | **0.5 → 0.25 linear over the first 3M environment steps (adopted)** | **5.37** | **6.89** |
+  | 0.5 → 0.25 over the time budget | 5.06 | 6.60 |
+  | 0.6 → 0.3 over 4M steps | 5.12 | 6.60 |
+  | constant 0.3 | 4.27 | 6.58 |
+
+  The adopted schedule won every batch.
+- **Why a larger α helps:** the agent learns a much faster policy (mean speed index about 1.4–1.7 instead of 0.6) that accepts more crashes. Under γ=0.99 a late crash is heavily discounted.
+
+**(d) No-op default for never-updated states:** no measurable effect (+0.12 at T=60, −0.10 at T=240). The option was removed and get_action stays a plain argmax.
+
+**Result (γ=0.99):**
+
+| | Before B4 | After B4 | TA baseline |
+|---|---|---|---|
+| T=60 | 3.8 | **about 5.4–5.5** | — |
+| T=240 | 4.8 | **about 6.8–6.9** | about 6 |
+
+**Next:**
+- **B5:** add the `TimeoutException` safety net. Consider training to about 0.95·T, since there is no freeze step.
+- **B6:** check other γ values (0.5–0.999) and T, the GIFs, and the external checker's Part B suites.
