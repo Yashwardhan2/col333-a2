@@ -74,7 +74,7 @@ file and in `tools/` is for our own use. Keep them out of `submission.zip`.
 - **B4:** no reward-derived optimistic init (TA rule), so no constant like 5.0. If we try optimism, derive it from rewards observed during training (for example, the largest per-step reward seen so far / (1−γ), with the γ given to the agent), and compare it against zero init. Every non-collision reward is positive, so zero init already makes unvisited actions look worse than visited ones.
 - **B6:** target is ~6 at 240 s. Also test smaller T and other γ values.
 
-## Part A status (A1–A4 done)
+## Part A status (A1–A4 done; A5 P1 + P2 done)
 
 - `part_a/agent.py` implements exact factored value iteration.
 - **Validation:**
@@ -88,3 +88,16 @@ file and in `tools/` is for our own use. Keep them out of `submission.zip`.
   | TC1 | 6.09 ± 0.04 | 6.068 | ~6.0 | < 0.1 s |
   | TC2 | 1.70 ± 0.06 | 1.747 | ~1.7 | 0.2 s |
   | TC3 | 7.04 ± 0.22 | 7.149 | n/a | < 0.1 s |
+
+- **After A5** (P1 relaxed pre-solve + P2 timeout safety net), single core, same harness, old agent = before A5:
+
+  | Layout | T | Old agent | New agent |
+  |---|---|---|---|
+  | TC1 / TC2 / TC3 (1000 runs) | 60 / 900 / 60 | 6.09 / 1.70 / 7.04 | 6.07 / 1.73 / 7.00 (same optimum, within noise) |
+  | TC1, TC2, small 30×30, maze 30×30 | 1 | all converge within 1 s | same |
+  | corridors 30×30 (2.9M states) | 1 / 2 / 5 / 20 | −5.00 / −5.00 / −5.00 / 1.35 | **1.10 / 1.39 / 1.29 / 1.39** |
+  | blocks 30×30 (31.5M states) | 5 | **`None` (timeout)** | **1.91** (safety net kept the pre-solve policy) |
+  | blocks 30×30 | 10 / 60 | −4.97 / −5.00 | **1.94 / 1.90** |
+
+- The official `run.py` was run on test 3 at T=60 (score 7.35, 10 GIFs) and on test 1 at T=1 (score 6.15).
+- **Known limitation:** Python runs the alarm handler only after the current numpy call returns. When the safety net is needed, `learn_policy` can therefore overrun T by up to the length of one numpy call (0.4 s seen on the 31.5M-state grid). On realistic grids these calls take milliseconds.

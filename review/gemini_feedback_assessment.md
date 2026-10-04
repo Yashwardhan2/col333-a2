@@ -248,3 +248,12 @@ Gemini did not comment on this. Together with P1 it guarantees a sensible policy
 - `tools/experiments/compare_variants.py <layout> <prob> zeros,layered,bfs_gemini,relaxed,layered+relaxed,gs,gs+relaxed`: prints the tables in 2.4.
 - `tools/experiments/layouts/`: the synthetic 30×30 layouts (small, corridors, blocks, maze).
 - `tools/brute_check_a.py`, `tools/fuzz_a.py`, `tools/eval_a.py`: correctness checks and the evaluation harness from steps A1–A4.
+
+---
+
+## 6. Outcome (after discussion)
+
+- **P1 and P2 were approved and implemented** in `part_a/agent.py`.
+- After the change, the brute-force check and the fuzz check still pass, and the public-test scores are unchanged.
+- Results at small budgets are in `NOTES.md` (Part A status). For example, on the 31.5M-state grid at T=5 the old agent scored `None` and the new agent scores 1.91.
+- The roadmap edits (A5 and B4) were applied to `NOTES.md`.
