@@ -36,10 +36,13 @@ class Agent:
 
         # learning schedule
         # step size: linear from alpha_start to alpha_end, either over alpha_decay_steps
-        # environment steps (if > 0) or over alpha_decay_frac of the time budget
-        self.alpha_start = 0.2
-        self.alpha_end = 0.2
-        self.alpha_decay_steps = 0
+        # environment steps (if > 0) or over alpha_decay_frac of the time budget.
+        # Decaying with experience (steps) keeps a large step size when the budget
+        # is short and settles to a smaller one with more data; measured better than
+        # any constant and than decaying over the time budget at both T=60 and T=240
+        self.alpha_start = 0.5
+        self.alpha_end = 0.25
+        self.alpha_decay_steps = 3000000
         self.alpha_decay_frac = 1.0
         self.eps_start = 1.0         # epsilon decays linearly with elapsed time ...
         self.eps_end = 0.01
