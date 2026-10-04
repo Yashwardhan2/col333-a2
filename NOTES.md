@@ -360,3 +360,13 @@ Full write-up: `review/gemini_partb_round2_assessment.md`. Raw data: `tools/expe
 - Under the grading rules, T=240 above the baseline earns nothing extra, and the remaining 20% is small-budget performance ranked against other submissions.
 - So the T=240 gain alone is not worth adopting.
 - It also requires the user's call on whether a data-derived initial value is allowed.
+
+## B6: small-budget / gamma sweep (results/b6_small_budget_results.txt, runner b6/run_b6.py)
+180 runs, 0 errors/timeouts. T in {5,10,20,30,60}, gamma in {0.9,0.97,0.99,0.999}, 3 runs x 300 eval episodes, 3 workers.
+Arms: C = submitted agent; E = step-based eps 1 -> 0.15 over 150k steps (Gemini r3); A = alpha_decay_steps 500k (Gemini r3).
+- C (current) scores rise monotonically with T at every gamma (e.g. 0.99: 2.76, 3.23, 4.05, 4.18, 5.27; 0.97: 1.05, 1.37, 1.65, 1.99, 2.36).
+- T <= 10: all three arms within noise (largest gap A +0.86 at T=5 gamma=0.999, C sd 2.3).
+- T >= 20: C best or tied at gamma 0.99/0.999. A: -0.25/-0.93 (T20), 0/-1.12 (T30), -0.77/-2.44 (T60).
+  E: -0.73/-1.43 (T20), -0.40/-2.81 (T30), -1.19/-4.27 (T60).
+- gamma 0.9/0.97: differences within noise.
+Decision: keep the submitted agent unchanged; neither Gemini idea helps small budgets, and both lose from T=20 up.
