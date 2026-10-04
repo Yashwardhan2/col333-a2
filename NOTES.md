@@ -100,7 +100,7 @@ file and in `tools/` is for our own use. Keep them out of `submission.zip`.
   | blocks 30×30 | 10 / 60 | −4.97 / −5.00 | **1.94 / 1.90** |
 
 - The official `run.py` was run on test 3 at T=60 (score 7.35, 10 GIFs) and on test 1 at T=1 (score 6.15).
-- **Known limitation:** Python runs the alarm handler only after the current numpy call returns. When the safety net is needed, `learn_policy` can therefore overrun T by up to the length of one numpy call (0.4 s seen on the 31.5M-state grid). On realistic grids these calls take milliseconds.
+- **Known limitation:** Python runs the alarm handler only after the current numpy call returns. When the safety net is needed, `learn_policy` can therefore overrun T by up to the length of one numpy call. On the 31.5M-state grid we saw 0.4 s and 2.3 s; the bound there is about 3 s. On realistic grids these calls take milliseconds. Proposal P4 in `review/gemini_round2_assessment.md` would cut this.
 
 - **A6 (`get_action`):**
   - O(1) dict lookups, about 1 µs per call (`env.step` takes 5.7 µs).
@@ -119,3 +119,4 @@ file and in `tools/` is for our own use. Keep them out of `submission.zip`.
   - `review/part_a_progress_for_review.md`: round 1, a snapshot from before A5.
   - `review/gemini_feedback_assessment.md`: the round-1 assessment.
   - `review/part_a_round2_for_gemini.md`: round 2, current code plus the Part B plan and starter `env.py`.
+  - `review/gemini_round2_assessment.md`: the round-2 assessment, including Part B simulator findings (collision timing, `min_dist`=1 aliasing) and the first Q-learning prototypes (about 4.9 at T=240, against the TA's ~6).
