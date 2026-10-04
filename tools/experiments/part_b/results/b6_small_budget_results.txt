@@ -1,0 +1,3 @@
+B6:C T=5 df=0.9: learn 4.3s, 0.09M steps (21.9k/s) | score 0.583 +- 0.041 (300 eps) | crash rate 1.00 | mean length 51 | mean speed idx 2.37 | unvisited-state steps 1.09%
+B6:E T=5 df=0.9: learn 4.3s, 0.09M steps (21.6k/s) | score 0.517 +- 0.045 (300 eps) | crash rate 1.00 | mean length 43 | mean speed idx 2.38 | unvisited-state steps 1.00%
+B6:A T=5 df=0.9: learn 4.3s, 0.09M steps (21.5k/s) | score 0.578 +- 0.044 (300 eps) | crash rate 1.00 | mean length 48 | mean speed idx 2.34 | unvisited-state steps 1.21%
