@@ -1,4 +1,4 @@
-<YOUR NAME>, 2024CS10300
+Yashwardhan Singh Choudhary (2024CS10300), Tejasvi (2024CS10582)
 
 === PART A: Treasure Hunt (exact factored value iteration) ===
 
