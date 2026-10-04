@@ -141,3 +141,32 @@ file and in `tools/` is for our own use. Keep them out of `submission.zip`.
 - **Throughput:** about 24k steps/s now. Flat indices and pre-drawn random numbers mean more updates per second, which helps the small-budget 20%.
 - **Time budget:** if `get_action` reads Q directly, there's no freeze step, so with the timeout safety net we can train until about 0.95·T.
 - **Noise:** a single run has about ±0.1 CI and seeds differ by about 0.2. Use at least 3 seeds and at least 300 evaluation episodes per comparison.
+
+## External checker (AbhinavPJ/COL333-A2-CHECKER), Part A
+
+**Run:**
+- Command: `python3 <checker>/benchmark.py evaluate --part a --project-dir <repo>/A2-starter-code`. The `--project-dir` must be the folder that *contains* `A2-starter-code/part_a`, which in our repo is the outer `A2-starter-code`.
+- Use **evaluate only**. The README's `overwrite` step replaces the author's reference scores with your own agent's, after which `evaluate` just compares the agent with itself.
+
+**What the shipped references contain:**
+- 3 suites × 60 adversarial cases.
+- Grid sizes 5–30, γ ∈ {0, 0.5, 0.9, 0.99, 0.999, 0.9999}, ps ∈ {0, 0.05, 0.5, 0.8, 0.99, 1}, rewards up to ±100.
+- Each case is trained for 10 s and scored on 10 seeded episodes. "matched" means within 1e-5 relative.
+
+**Result (cloud, final Part A code):**
+
+| Suite | Matched | More optimal | Suboptimal | Errors |
+|---|---|---|---|---|
+| 001 | 54 | 4 | 2 | 0 |
+| 002 | 35 | 24 | 1 | 0 |
+| 003 | 37 | 23 | 0 | 0 |
+| **Total (180)** | **126** | **51** | **3** | **0** |
+
+**The 3 "suboptimal" cases** (`tools/analyze_checker_a.py`):
+- In all 3, our VI converged and our expected score equals the optimum (the 2N² cap costs at most 0.025).
+- 001-0027 (ps = 0.05, very noisy) and 001-0034 lost on 10-sample noise.
+- 002-0044 has two tied optimal actions at the start state, and the reference took the other one.
+
+**The "more optimal" margins** are often +50 to +770, so the reference agent is weak on these adversarial settings.
+
+**Caveat:** the checker uses `signal.setitimer` and SIGALRM, as does `run.py`, so on Windows it must be run under WSL.
