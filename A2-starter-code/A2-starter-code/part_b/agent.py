@@ -49,9 +49,6 @@ class Agent:
         self.eps_decay_frac = 1.0    # ... reaching eps_end at this fraction of the budget
                                      # (measured: exploring to the end beats 0.8/0.3/0.2)
 
-        # action for states never updated during training (-1: plain argmax of zeros)
-        self.unvisited_action = -1
-
         self.rng = random.Random()
         self.stats = {'steps': 0, 'episodes': 0}
 
@@ -152,8 +149,5 @@ class Agent:
                 ACTION_DECREASE_LANE = 3
                 ACTION_NO_OP = 4
         """
-        i = self._index(speed, lane, min_dist)
-        if self.unvisited_action >= 0 and not any(self.visits[i]):
-            return self.unvisited_action
-        row = self.Q[i]
+        row = self.Q[self._index(speed, lane, min_dist)]
         return row.index(max(row))

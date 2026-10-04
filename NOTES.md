@@ -226,3 +226,53 @@ Full write-up: `review/gemini_partb_round1_assessment.md`.
   - throughput;
   - α between 0.05 and 0.2;
   - a no-op default for never-updated states (A/B test only).
+
+## Part B B4 (tuning) — done
+
+All runs: γ=0.99, 300 greedy evaluation episodes, at least 3 replicates per setting and budget. Settings were interleaved in the job queue so that load drift hits all of them equally.
+
+**(a) Exploration.** ε is linear from 1 to 0.01, reaching it at **1.0·T**, so ε is still about 0.16 when training stops at 0.85·T.
+
+| ε reaches its floor at | T=60 | T=240 |
+|---|---|---|
+| 0.8·T (old) | 3.64 | 4.65 |
+| **1.0·T** | **3.89** | **4.66** |
+| floor 0.05 | 3.68 | 4.48 |
+| floor 0.1 | 3.61 | 4.74 |
+| 1.5·T | 3.68 | 4.91 (not better than 1.0·T) |
+
+**(b) Throughput.** The Q-table and update counts are plain Python lists, giving about +6% steps/s. The bound is about +8%, because the simulator's own `step()` is about 90% of the per-step cost (about 30–44 µs).
+
+**(c) Step size α, the big lever.**
+- Constant α:
+
+  | α | 0.05 | 0.1 | 0.15 | 0.2 | 0.3 | 0.4 | 0.5 |
+  |---|---|---|---|---|---|---|---|
+  | T=60 | 3.38 | 3.83 | 4.11 | 4.03–4.10 | 4.52 | 5.00 | 5.24 |
+  | T=240 | 4.21 | 4.81 | 6.30 | 6.76–6.78 | 7.00 | 6.03 | 5.71 |
+
+  So the best constant depends on the budget.
+- Schedules:
+
+  | Schedule | T=60 | T=240 |
+  |---|---|---|
+  | **0.5 → 0.25 linear over the first 3M environment steps (adopted)** | **5.37** | **6.89** |
+  | 0.5 → 0.25 over the time budget | 5.06 | 6.60 |
+  | 0.6 → 0.3 over 4M steps | 5.12 | 6.60 |
+  | constant 0.3 | 4.27 | 6.58 |
+
+  The adopted schedule won every batch.
+- **Why a larger α helps:** the agent learns a much faster policy (mean speed index about 1.4–1.7 instead of 0.6) that accepts more crashes. Under γ=0.99 a late crash is heavily discounted.
+
+**(d) No-op default for never-updated states:** no measurable effect (+0.12 at T=60, −0.10 at T=240). The option was removed and get_action stays a plain argmax.
+
+**Result (γ=0.99):**
+
+| | Before B4 | After B4 | TA baseline |
+|---|---|---|---|
+| T=60 | 3.8 | **about 5.4–5.5** | — |
+| T=240 | 4.8 | **about 6.8–6.9** | about 6 |
+
+**Next:**
+- **B5:** add the `TimeoutException` safety net. Consider training to about 0.95·T, since there is no freeze step.
+- **B6:** check other γ values (0.5–0.999) and T, the GIFs, and the external checker's Part B suites.
