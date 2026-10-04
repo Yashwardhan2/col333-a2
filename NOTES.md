@@ -377,3 +377,10 @@ Decision: keep the submitted agent unchanged; neither Gemini idea helps small bu
 Mean score ours vs reference by gamma: 0.5 0.189 vs 0.171 | 0.8 0.386 vs 0.344 | 0.95 0.609 vs 0.042 | 0.99 1.170 vs -0.876 | 0.999 8.630 vs -0.559.
 Suboptimal cases are mostly small gaps at gamma 0.8 (15 of 26); the largest is -1.05 (suite_001-0019, gamma 0.99) - 10 eval episodes per case is noisy.
 Caveat: the harness fixes the reset seed for training too, so absolute scores are well below run.py-style ones (gamma 0.99, T=10: 1.17 here vs 3.23 in B6).
+
+## Final check: clean Python 3.10 (submission.zip)
+Fresh venv, Python 3.10.20, exact pinned requirments.txt (numpy 2.2.6, pillow 12.3.0, matplotlib 3.10.9,
+opencv-python 5.0.0.93, scikit-learn 1.7.2, imageio 2.37.4). Agents taken from submission.zip into a fresh
+starter copy; official run.py, Gradescope sanity settings:
+- Part A test 3, T=60, 5 runs: score 8.72, exit 0, 5 GIFs.
+- Part B T=60, df 0.99, 5 runs: score 5.34, exit 0, 5 GIFs.
