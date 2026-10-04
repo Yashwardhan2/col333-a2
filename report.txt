@@ -7,8 +7,7 @@ pirate regions are the 4-connected components of the pirate area. From the layou
 probability files we build the exact model env.py uses: the ship takes the intended
 direction w.p. ps and each other direction w.p. (1-ps)/3 (staying put if blocked); each
 pirate moves independently by its own stay-or-move matrix inside its region; outcomes
-are checked in env.py's order (pirate hit, then fort, then treasure); both ends are
-terminal.
+are checked in env.py's order (pirate hit, then fort, then treasure).
 
 Algorithm. Synchronous value iteration, with every Bellman backup factored into three
 cheap stages instead of one dense transition matrix:
@@ -18,7 +17,6 @@ cheap stages instead of one dense transition matrix:
     move independently. Cost O(S*(R1+R2)) instead of O(S*R1*R2).
  3. Ship expectation: since Q[a] = q*sum_d G_d + (ps-q)*G_a with q=(1-ps)/3, max and
     argmax over actions need only a running sum and a running best G_a.
-V is stored mask-first as V[mask, cell, r1, r2], so each treasure layer is contiguous.
 
 Anytime behaviour and time safety.
  - First we solve the pirate-free relaxation over (mask, cell) in milliseconds. Its
@@ -27,18 +25,17 @@ Anytime behaviour and time safety.
    converges to the same V* from this start.
  - Sweeps stop at convergence (max|dV| < 1e-9), at 0.85*T, or when the next sweep is
    predicted (1.5 x the last sweep time) to overrun.
- - learn_policy catches run.py's TimeoutException; V and policy are only ever replaced
-   by complete arrays, so the last complete policy survives instead of scoring None.
- - get_action is an O(1) table lookup (about 1 us), with a safe fallback for inputs
-   env.py should never produce.
+ - learn_policy catches run.py's TimeoutException and only ever installs complete
+   arrays, so the last complete policy survives. get_action is an O(1) lookup.
 
 Validation. Against brute-force VI on the unfactored MDP built from env.py's own
 functions: max |dV| <= 4e-9 on tests 1-3 and <= 1e-7 on 40 random layouts, with no
 suboptimal actions; Monte-Carlo returns from env.py match V(start). Scores (1000
-runs): TC1 6.07 (baseline ~6.0), TC2 1.73 (~1.7), TC3 7.35; realistic grids converge in
-under 1 s. 48 random grids (N up to 30, up to 31.5M states) ran under SIGALRM with no
-timeouts or crashes. Gauss-Seidel, solving layer by layer by treasure mask, and a
-sparse pirate stencil were all measured and found slower in wall-clock time with numpy.
+runs): TC1 6.07, TC2 1.73, TC3 7.35, i.e. the optimal V*(start) = 6.068 / 1.747 / 7.149
+(TA baselines as updated on Piazza after the run.py discounting fix: ~6.0 / ~1.7; the
+PDF's ~8 / ~4.8 predate it). Realistic grids converge in under 1 s; 48 random grids (N
+up to 30, up to 31.5M states) ran under SIGALRM with no timeouts or crashes.
+Gauss-Seidel and a sparse pirate stencil were measured slower with numpy.
 
 === PART B: Highway (tabular Q-learning) ===
 
@@ -70,27 +67,20 @@ updates at alpha=0.1), while the non-bootstrapped crash target is learned in abo
 updates. Rarely visited fast states therefore look worse than they are and the agent
 stays slow. A diagnostic run with Q0 = +3 (not used, since it assumes reward
 knowledge) raised the T=60 score from 3.93 to 6.52 at alpha=0.1, confirming this. A
-large alpha propagates the positive values much faster. Argmax ties pick action 0
-(speed up), which adds a little hidden optimism early in training.
+large alpha propagates the positive values much faster.
 
-Learned behaviour. At gamma=0.99 the policy drives fast and accepts late crashes: the
-median crash step is about 350-410 and a crash costs only about 0.4 of discounted
-return. Its undiscounted return is also higher than a cautious policy's (47-48 vs
-41-45). At gamma=0.999 the same code learns to drive cautiously (about 7% crashes); at
-gamma <= 0.95 it races, which is optimal because the score is settled early.
+Learned behaviour. At gamma=0.99 the policy drives fast and accepts late crashes
+(median crash step ~350-410, costing only ~0.4 of discounted return). At gamma=0.999 it
+drives cautiously (~7% crashes); at gamma <= 0.95 it races, as the score settles early.
 
-Time safety. The deadline uses time.monotonic(). learn_policy catches run.py's
-TimeoutException, and Q is updated one element at a time, so it is always valid: in 300
-random interruptions no exception escaped and no Q value was invalid.
+Time safety. A time.monotonic() deadline, plus a catch of run.py's TimeoutException; Q
+stays valid under interruption (300 random interruptions tested).
 
 Results (gamma=0.99, mean of 3 runs x 300 episodes):
   T (s)  :   5     10    20    30    60    240
-  score  :  2.8   3.2   4.0   4.2   5.3   7.0-7.1   (TA baseline at 240 s: ~6)
-Scores rise with T at every gamma tested (0.5 to 0.999). The community checker's
-180 Part B cases ran with no errors or timeouts.
+  score  :  2.8   3.2   4.0   4.2   5.3   7.0-7.1
+TA baseline at 240 s: ~6 (Piazza update; PDF: ~5.0). Scores rise with T at every gamma
+tested (0.5 to 0.999).
 
-Tried and rejected (measured): constant eps 0.2-0.5; a fully random start; eps or alpha
-decaying over a fixed small number of steps (worse from T=20 up); training to 0.95*T;
-a no-op default for unseen states (unseen states occur in < 0.02% of steps). An
-optimistic start computed from the agent's own probe episodes gained about +1 at
-T=240 but lost 0.3 at T=60, and was dropped.
+Tried and rejected (measured): constant eps; eps/alpha decaying over a fixed number of
+steps; training to 0.95*T; an optimistic start from the agent's own probe episodes.
