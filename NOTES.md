@@ -120,3 +120,24 @@ file and in `tools/` is for our own use. Keep them out of `submission.zip`.
   - `review/gemini_feedback_assessment.md`: the round-1 assessment.
   - `review/part_a_round2_for_gemini.md`: round 2, current code plus the Part B plan and starter `env.py`.
   - `review/gemini_round2_assessment.md`: the round-2 assessment, including Part B simulator findings (collision timing, `min_dist`=1 aliasing) and the first Q-learning prototypes (about 4.9 at T=240, against the TA's ~6).
+
+## Decisions after review round 3 (Gemini's reply to the round-2 assessment)
+
+**Part A**
+- **P3 and P4 skipped (agreed).** Realistic grids converge in under 1 s even at T=1. The grader uses `run.py`'s `TimeoutException`, which we already catch.
+- **Before submission:**
+  - Do one run in a clean Python 3.10 environment with the exact pinned `requirments.txt`. So far we've only run Python 3.11 with headless OpenCV, plus a static `vermin` check.
+  - Write the report.
+
+**Part B, adopted for when we start**
+- **B-i, collision credit:** when `done` arrives with the collision reward, update the *previous* (s, a) with target r_t + γ·r_{t+1}, using the **observed** reward (never a hard-coded −5). Don't update the collision step's own (s, a), because that action never ran.
+- Reconfirm the +0.2 gain with at least 3 seeds per setting.
+
+**Part B, untested ideas (tune them only after diagnosing where score is lost)**
+- **α:** constant 0.1 (measured better than 1/(1+n)^0.6). Also try 0.15, or a 0.2 → 0.05 step schedule.
+- **ε:** linear decay to 0.01 by 0.75–0.8·T. Mind the interplay with when training stops.
+- **Unvisited states:** default action derived from learned data only. Hand-written rules would encode reward knowledge, which is forbidden. Gemini's rule was also wrong, because `min_dist`=0 means *no car ahead*. First measure how often greedy play even reaches unvisited states.
+- **Diagnose first:** with the fix, evaluation crashed in 22–25% of episodes. Break the score down into speed vs crashes vs crash timing.
+- **Throughput:** about 24k steps/s now. Flat indices and pre-drawn random numbers mean more updates per second, which helps the small-budget 20%.
+- **Time budget:** if `get_action` reads Q directly, there's no freeze step, so with the timeout safety net we can train until about 0.95·T.
+- **Noise:** a single run has about ±0.1 CI and seeds differ by about 0.2. Use at least 3 seeds and at least 300 evaluation episodes per comparison.
