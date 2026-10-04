@@ -41,7 +41,7 @@ for _ in range(episodes):
         snap = snapshot(env)
         x = snap[0]
         far_behind += sum(1 for (_, p, _) in snap[3].values() if p < x - 0.5)
-        recent_unvisited = (recent_unvisited + [agent.visits[agent._index(*s)].sum() == 0])[-5:]
+        recent_unvisited = (recent_unvisited + [sum(agent.visits[agent._index(*s)]) == 0])[-5:]
         a = agent.get_action(*s)
         hist.append((snap, a))
         speed_hist[snap[2]] += 1

@@ -49,7 +49,7 @@ for _ in range(episodes):
     env = HighwayEnv(); s = env.get_state(); rs = []
     while not env.done:
         if visits is not None:
-            unvisited += int(visits[agent._index(*s)].sum() == 0)
+            unvisited += int(sum(visits[agent._index(*s)]) == 0)
         total += 1; speeds.append(s[0])
         s, r, d = env.step(agent.get_action(*s)); rs.append(r)
     dr = 0.0
