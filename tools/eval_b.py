@@ -9,8 +9,10 @@ negative; used for reporting only, never by the agent).
 """
 import os, sys, time, signal
 import numpy as np
-PB = os.environ.get('AGENT_DIR') or os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'A2-starter-code', 'A2-starter-code', 'part_b')
+PB = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'A2-starter-code', 'A2-starter-code', 'part_b')
 sys.path.insert(0, PB)
+if os.environ.get('AGENT_DIR'):      # experimental agent.py elsewhere; env.py still from the starter code
+    sys.path.insert(0, os.environ['AGENT_DIR'])
 from env import HighwayEnv
 from agent import Agent
 

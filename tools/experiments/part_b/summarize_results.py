@@ -44,6 +44,7 @@ def section(prefix, title):
 section('G:', 'gamma matrix (claim 3): tuned vs constant alpha')
 section('M:', 'mechanism (claim 2), T=60 gamma=0.99')
 section('B5:', 'B5 stop fraction (claim 4): 0.85T vs 0.95T with safety net')
+section('B6:', 'B6 small-budget / gamma sweep (C current, E step-eps, A alpha 500k)')
 if stats:
     print('\n== per-episode statistics (claim 1)')
     for k, rows in sorted(stats.items()):
