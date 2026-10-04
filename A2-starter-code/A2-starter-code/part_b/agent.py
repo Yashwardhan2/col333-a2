@@ -35,7 +35,7 @@ class Agent:
         self.visits = [[0] * self.n_actions for _ in range(self.n_states)]
 
         # learning schedule
-        self.alpha = 0.1             # constant step size
+        self.alpha = 0.2             # constant step size (measured: 0.2 > 0.15 > 0.1 > 0.05 at T=240)
         self.eps_start = 1.0         # epsilon decays linearly with elapsed time ...
         self.eps_end = 0.01
         self.eps_decay_frac = 1.0    # ... reaching eps_end at this fraction of the budget
