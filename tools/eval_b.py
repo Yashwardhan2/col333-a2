@@ -2,6 +2,8 @@
 per episode, discount df) without GIF rendering, with more episodes and diagnostics.
 
 usage: python tools/eval_b.py <T> <episodes> [df] [label]
+optional: AGENT_SET="eps_decay_frac=0.3,alpha=0.1" overrides agent attributes after construction
+(for tuning experiments; the submitted defaults live in agent.py).
 Diagnostics read only rewards/observations (crash = an episode whose last reward is
 negative; used for reporting only, never by the agent).
 """
@@ -27,6 +29,9 @@ def handler(*a):
 
 env = HighwayEnv()
 agent = Agent(env, discount_factor=df)
+for kv in filter(None, os.environ.get('AGENT_SET', '').split(',')):
+    k, v = kv.split('=')
+    setattr(agent, k.strip(), type(getattr(agent, k.strip()))(v))
 signal.signal(signal.SIGALRM, handler); signal.alarm(T)
 t0 = time.time()
 try:
