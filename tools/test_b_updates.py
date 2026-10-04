@@ -53,17 +53,19 @@ g = 0.9
 # collision ending
 ag = run([(S0, None, False), (S1, 0.1, False), (SC, 0.2, False), (SC, -5.0, True)], g)
 i0, i1, iC = ag._index(*S0), ag._index(*S1), ag._index(*SC)
-tried1 = ag.visits[i1] > 0
-assert np.all(ag.Q[iC] == 0.0), ag.Q[iC]
-assert np.all(ag.visits[iC] == 0), ag.visits[iC]
-assert np.allclose(ag.Q[i1][tried1], 0.2 + g * -5.0), ag.Q[i1]
-assert np.allclose(ag.Q[i0][ag.visits[i0] > 0], 0.1 + g * ag.Q[i1].max()), (ag.Q[i0], ag.Q[i1])
-print(f'collision episode: Q[s1] tried = {ag.Q[i1][tried1]} (expected {0.2 + g * -5.0:.3f}), '
-      f'Q[collided obs] = {ag.Q[iC]} (expected all 0), episodes run = {ag.stats["episodes"]}')
+Q, visits = np.array(ag.Q), np.array(ag.visits)
+tried1 = visits[i1] > 0
+assert np.all(Q[iC] == 0.0), Q[iC]
+assert np.all(visits[iC] == 0), visits[iC]
+assert np.allclose(Q[i1][tried1], 0.2 + g * -5.0), Q[i1]
+assert np.allclose(Q[i0][visits[i0] > 0], 0.1 + g * Q[i1].max()), (Q[i0], Q[i1])
+print(f'collision episode: Q[s1] tried = {Q[i1][tried1]} (expected {0.2 + g * -5.0:.3f}), '
+      f'Q[collided obs] = {Q[iC]} (expected all 0), episodes run = {ag.stats["episodes"]}')
 
 # time-limit ending (positive final reward)
 ag = run([(S0, None, False), (S1, 0.1, False), (SC, 0.2, False), (S0, 0.3, True)], g)
 i0, i1, iC = ag._index(*S0), ag._index(*S1), ag._index(*SC)
-assert np.allclose(ag.Q[i1][ag.visits[i1] > 0], 0.2 + g * 0.3), ag.Q[i1]
-print(f'time-limit episode: Q[s1] tried = {ag.Q[i1][ag.visits[i1] > 0]} (expected {0.2 + g * 0.3:.3f})')
+Q, visits = np.array(ag.Q), np.array(ag.visits)
+assert np.allclose(Q[i1][visits[i1] > 0], 0.2 + g * 0.3), Q[i1]
+print(f'time-limit episode: Q[s1] tried = {Q[i1][visits[i1] > 0]} (expected {0.2 + g * 0.3:.3f})')
 print('B3 update logic: OK')

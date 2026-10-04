@@ -1,8 +1,6 @@
 import random
 import time as _time
 
-import numpy as np
-
 from env import HighwayEnv
 
 
@@ -31,15 +29,20 @@ class Agent:
         self.n_actions = env.num_actions
         self.n_states = self.n_speed * self.n_lanes * self.n_dist ** self.n_lanes
 
-        # Q-table and update counts, flat state index x action
-        self.Q = np.zeros((self.n_states, self.n_actions))
-        self.visits = np.zeros((self.n_states, self.n_actions), dtype=np.int64)
+        # Q-table and update counts, flat state index x action. Plain Python lists:
+        # on 5-element rows, max/argmax/scalar updates are ~10x cheaper than numpy
+        self.Q = [[0.0] * self.n_actions for _ in range(self.n_states)]
+        self.visits = [[0] * self.n_actions for _ in range(self.n_states)]
 
         # learning schedule
         self.alpha = 0.1             # constant step size
         self.eps_start = 1.0         # epsilon decays linearly with elapsed time ...
         self.eps_end = 0.01
-        self.eps_decay_frac = 0.8    # ... reaching eps_end at this fraction of the budget
+        self.eps_decay_frac = 1.0    # ... reaching eps_end at this fraction of the budget
+                                     # (measured: exploring to the end beats 0.8/0.3/0.2)
+
+        # action for states never updated during training (-1: plain argmax of zeros)
+        self.unvisited_action = -1
 
         self.rng = random.Random()
         self.stats = {'steps': 0, 'episodes': 0}
@@ -86,10 +89,11 @@ class Agent:
                     if now >= deadline:
                         break
                     eps = max(self.eps_end, self.eps_start - (self.eps_start - self.eps_end) * (now - start) / decay_time)
+                row = Q[i]
                 if rng.random() < eps:
                     a = rng.randrange(n_actions)
                 else:
-                    a = int(Q[i].argmax())
+                    a = row.index(max(row))
                 s2, r, done = env.step(a)
                 steps += 1
                 if done:
@@ -101,13 +105,13 @@ class Agent:
                     # surviving episode, which is negligible and needs no reward constants.
                     if pending is not None:
                         pi, pa, pr = pending
-                        Q[pi, pa] += alpha * (pr + g * r - Q[pi, pa])
-                        visits[pi, pa] += 1
+                        Q[pi][pa] += alpha * (pr + g * r - Q[pi][pa])
+                        visits[pi][pa] += 1
                     break
                 if pending is not None:
                     pi, pa, pr = pending
-                    Q[pi, pa] += alpha * (pr + g * Q[i].max() - Q[pi, pa])
-                    visits[pi, pa] += 1
+                    Q[pi][pa] += alpha * (pr + g * max(row) - Q[pi][pa])
+                    visits[pi][pa] += 1
                 pending = (i, a, r)
                 i = index(*s2)
 
@@ -133,4 +137,8 @@ class Agent:
                 ACTION_DECREASE_LANE = 3
                 ACTION_NO_OP = 4
         """
-        return int(self.Q[self._index(speed, lane, min_dist)].argmax())
+        i = self._index(speed, lane, min_dist)
+        if self.unvisited_action >= 0 and not any(self.visits[i]):
+            return self.unvisited_action
+        row = self.Q[i]
+        return row.index(max(row))
