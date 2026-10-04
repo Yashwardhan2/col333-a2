@@ -35,19 +35,21 @@ class Agent:
         self.visits = [[0] * self.n_actions for _ in range(self.n_states)]
 
         # learning schedule
-        # step size: linear from alpha_start to alpha_end, either over alpha_decay_steps
-        # environment steps (if > 0) or over alpha_decay_frac of the time budget.
-        # Decaying with experience (steps) keeps a large step size when the budget
-        # is short and settles to a smaller one with more data; measured better than
-        # any constant and than decaying over the time budget at both T=60 and T=240
+        # step size: linear from alpha_start to alpha_end over the first alpha_decay_steps
+        # environment steps, then constant. Decaying with experience keeps a large step
+        # size when the budget is short and settles to a smaller one with more data;
+        # measured better than any constant and than decaying over the time budget
         self.alpha_start = 0.5
         self.alpha_end = 0.25
         self.alpha_decay_steps = 3000000
-        self.alpha_decay_frac = 1.0
-        self.eps_start = 1.0         # epsilon decays linearly with elapsed time ...
+        # epsilon: linear from eps_start towards eps_end over eps_decay_frac of the budget.
+        # Training stops at stop_frac of the budget, so with these values the last
+        # epsilon is about 0.16 (measured: exploring to the end beats faster decays)
+        self.eps_start = 1.0
         self.eps_end = 0.01
-        self.eps_decay_frac = 1.0    # ... reaching eps_end at this fraction of the budget
-                                     # (measured: exploring to the end beats 0.8/0.3/0.2)
+        self.eps_decay_frac = 1.0
+        # stop training at this fraction of the budget (measured: 0.95 gave no gain)
+        self.stop_frac = 0.85
 
         self.rng = random.Random()
         self.stats = {'steps': 0, 'episodes': 0}
@@ -71,9 +73,19 @@ class Agent:
         Returns:
             None
         """
-        start = _time.time()
-        # basic guard against run.py's SIGALRM; refined in step B5
-        deadline = start + 0.85 * time
+        # monotonic clock: unlike time.time() it cannot jump, like run.py's SIGALRM timer
+        start = _time.monotonic()
+        try:
+            self._train(start, start + self.stop_frac * time, time)
+        except Exception as e:
+            # safety net: if run.py's alarm fires anyway, keep what was learned instead of
+            # letting the run score None. run.py defines TimeoutException in its own
+            # __main__, so match it by name. self.Q is updated one list element at a time,
+            # so an interruption leaves it valid (at most one in-flight update is lost).
+            if type(e).__name__ not in ('TimeoutException', 'TimeoutError'):
+                raise
+
+    def _train(self, start, deadline, time):
         decay_time = self.eps_decay_frac * time
         Q, visits, rng = self.Q, self.visits, self.rng
         g, n_actions = self.gamma, self.n_actions
@@ -83,51 +95,48 @@ class Agent:
         eps = self.eps_start
         steps = 0
 
-        while _time.time() < deadline:
-            # a fresh environment per episode, as run.py does for evaluation
-            # (reset() would spawn traffic around the previous episode's car)
-            env = HighwayEnv()
-            i = index(*env.get_state())
-            pending = None              # (state, action, reward) still waiting for its update
-            self.stats['episodes'] += 1
-            while True:
-                if steps % 64 == 0:
-                    now = _time.time()
-                    if now >= deadline:
-                        break
-                    eps = max(self.eps_end, self.eps_start - (self.eps_start - self.eps_end) * (now - start) / decay_time)
-                    if self.alpha_decay_steps > 0:
+        try:
+            while _time.monotonic() < deadline:
+                # a fresh environment per episode, as run.py does for evaluation
+                # (reset() would spawn traffic around the previous episode's car)
+                env = HighwayEnv()
+                i = index(*env.get_state())
+                pending = None              # (state, action, reward) still waiting for its update
+                self.stats['episodes'] += 1
+                while True:
+                    if steps % 64 == 0:
+                        now = _time.monotonic()
+                        if now >= deadline:
+                            break
+                        eps = max(self.eps_end, self.eps_start - (self.eps_start - self.eps_end) * (now - start) / decay_time)
                         progress = (self.stats['steps'] + steps) / self.alpha_decay_steps
+                        alpha = max(a_end, a_start - (a_start - a_end) * progress)
+                    row = Q[i]
+                    if rng.random() < eps:
+                        a = rng.randrange(n_actions)
                     else:
-                        progress = (now - start) / (self.alpha_decay_frac * time)
-                    alpha = max(a_end, a_start - (a_start - a_end) * progress)
-                row = Q[i]
-                if rng.random() < eps:
-                    a = rng.randrange(n_actions)
-                else:
-                    a = row.index(max(row))
-                s2, r, done = env.step(a)
-                steps += 1
-                if done:
-                    # env.step checks for a collision *before* applying the action, so on
-                    # the step that returns the collision this action never ran and the
-                    # reward belongs to the previous action. Credit it there (one-step
-                    # lookahead, no bootstrap) and leave this (state, action) untouched.
-                    # The same rule at the episode-length limit drops one bootstrap per
-                    # surviving episode, which is negligible and needs no reward constants.
+                        a = row.index(max(row))
+                    s2, r, done = env.step(a)
+                    steps += 1
+                    if done:
+                        # env.step checks for a collision *before* applying the action, so on
+                        # the step that returns the collision this action never ran and the
+                        # reward belongs to the previous action. Credit it there (no bootstrap)
+                        # and leave this (state, action) untouched. At the 1000-step limit
+                        # run.py's scoring also stops, so the same target is exact there too.
+                        if pending is not None:
+                            pi, pa, pr = pending
+                            Q[pi][pa] += alpha * (pr + g * r - Q[pi][pa])
+                            visits[pi][pa] += 1
+                        break
                     if pending is not None:
                         pi, pa, pr = pending
-                        Q[pi][pa] += alpha * (pr + g * r - Q[pi][pa])
+                        Q[pi][pa] += alpha * (pr + g * max(row) - Q[pi][pa])
                         visits[pi][pa] += 1
-                    break
-                if pending is not None:
-                    pi, pa, pr = pending
-                    Q[pi][pa] += alpha * (pr + g * max(row) - Q[pi][pa])
-                    visits[pi][pa] += 1
-                pending = (i, a, r)
-                i = index(*s2)
-
-        self.stats['steps'] += steps
+                    pending = (i, a, r)
+                    i = index(*s2)
+        finally:
+            self.stats['steps'] += steps
 
     def get_action(self, speed, lane, min_dist):
         """
