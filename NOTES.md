@@ -370,3 +370,10 @@ Arms: C = submitted agent; E = step-based eps 1 -> 0.15 over 150k steps (Gemini 
   E: -0.73/-1.43 (T20), -0.40/-2.81 (T30), -1.19/-4.27 (T60).
 - gamma 0.9/0.97: differences within noise.
 Decision: keep the submitted agent unchanged; neither Gemini idea helps small budgets, and both lose from T=20 up.
+
+## External checker, Part B (results/checker_b_suite_00{1,2,3}.txt)
+`benchmark.py evaluate --part b --suite <s> --project-dir A2-starter-code`, 3 suites x 60 cases run in parallel, 10 s training, 10 fixed-seed eval runs per case.
+0 errors / 0 timeouts; matched 0 (tolerance 1e-5 is meaningless for a learning agent), more optimal 154, suboptimal 26.
+Mean score ours vs reference by gamma: 0.5 0.189 vs 0.171 | 0.8 0.386 vs 0.344 | 0.95 0.609 vs 0.042 | 0.99 1.170 vs -0.876 | 0.999 8.630 vs -0.559.
+Suboptimal cases are mostly small gaps at gamma 0.8 (15 of 26); the largest is -1.05 (suite_001-0019, gamma 0.99) - 10 eval episodes per case is noisy.
+Caveat: the harness fixes the reset seed for training too, so absolute scores are well below run.py-style ones (gamma 0.99, T=10: 1.17 here vs 3.23 in B6).
