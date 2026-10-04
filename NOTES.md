@@ -334,3 +334,29 @@ Full write-up: `review/gemini_partb_round2_assessment.md`. Raw data: `tools/expe
 
 - **No setting beats the tuned agent at both budgets** beyond noise, so it stays.
 - **Robust finding:** a fully random start (ε=1) with a small α is very costly. With all Q values tied at 0, argmax picks action 0 (*speed up*), so a mostly greedy agent gathers data in fast states early; that's hidden optimism. This again points to the pessimistic Q₀ as the real bottleneck, which is what lever B (data-driven optimism) targets.
+
+## B4 lever B (data-driven optimism): screened, NOT adopted (decision pending)
+
+**Design panel:** `tools/experiments/part_b/results/leverB_design_panel_agents.jsonl` (3 designers, 2 judges, a synthesizer).
+- The shortlisted design is a "probe-init": spend at most 5% of T driving randomly, take the mean of the top 10% of the probe's discounted episode returns as U, set all Q to U, replay the probe data, then train as usual.
+- The pooled one-cell TD-level variant floors to 0 at γ ≥ 0.8 (random episodes crash after about 54 steps), so it is a no-op.
+- The top-10% level comes out as 0.19 / 0.45 / 0.80 / 1.28 / 2.54 / 2.53 at γ 0.5 / 0.8 / 0.9 / 0.95 / 0.99 / 0.999.
+
+**Prototype:** `tools/experiments/part_b/leverB_prototype/`. Its replay matches the online update exactly (0 difference over 300 random cases).
+
+**Screen** (γ=0.99, 3 runs each; `results/leverB_optimism_screen_results.txt`):
+
+| Arm | T=60 | T=240 |
+|---|---|---|
+| control | 5.61 | 7.08 |
+| preset U=3, α 0.1 (diagnostic) | **+1.07** | **+1.04** |
+| probe top-10%, α 0.1 | **−0.30** (5.66, 4.49, 5.77) | **+0.96** (t=8.1) |
+| probe + tuned α | +0.17 | −0.19 |
+| preset + tuned α | −0.07 | +0.06 |
+| probe + α 0.2 | +0.05 | +0.08 |
+
+**Decision:**
+- It fails the pre-registered bar (≥ +0.33 at T=60).
+- Under the grading rules, T=240 above the baseline earns nothing extra, and the remaining 20% is small-budget performance ranked against other submissions.
+- So the T=240 gain alone is not worth adopting.
+- It also requires the user's call on whether a data-derived initial value is allowed.
