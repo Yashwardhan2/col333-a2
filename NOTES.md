@@ -276,3 +276,33 @@ All runs: γ=0.99, 300 greedy evaluation episodes, at least 3 replicates per set
 **Next:**
 - **B5:** add the `TimeoutException` safety net. Consider training to about 0.95·T, since there is no freeze step.
 - **B6:** check other γ values (0.5–0.999) and T, the GIFs, and the external checker's Part B suites.
+
+## Part B review round 2 (Gemini): outcome
+
+Full write-up: `review/gemini_partb_round2_assessment.md`. Raw data: `tools/experiments/part_b/results/`.
+
+- **Claim 1, aggressive optimum: real.**
+  - Crashes cost only −0.35 to −0.48 of discounted score; the median crash step is 354–413.
+  - The undiscounted return is *higher* than the cautious agent's (47–48 vs 41–45), contrary to Gemini.
+  - "Strictly dominates" is true only for crashes after K* = 64/85/130 steps at γ=0.99.
+- **Claim 2, "non-stationarity, arithmetic mean": wrong.** The decisive experiment at T=60 (α=0.1, same ε decay):
+
+  | Q₀ | Score |
+  |---|---|
+  | 0 | 3.93 |
+  | +3 | **6.52** |
+
+  The real bottleneck is pessimistic Q₀ plus slow bootstrapped propagation.
+- **Claim 2 side finding:** constant ε=0.3 with α=0.1 scored 5.68, above the tuned agent's 5.32.
+- **Claim 3, γ robustness:** the tuned schedule is never worse than constant α 0.1 or 0.3 for γ ∈ {0.5, …, 0.999}, at T=60 and T=240. No γ-dependent tuning is needed.
+- **Claim 4, 0.95·T:** safe with a net (300 random interruptions, all clean), but **no gain**:
+
+  | Stop at | T=60 | T=240 |
+  |---|---|---|
+  | 0.85·T | 5.61 | 7.10 |
+  | 0.95·T | 5.46 | 6.87 |
+
+  The current agent still lacks the net (B5).
+- **Proposals (not done):**
+  - **B5:** add the net and a monotonic clock, keep 0.85·T, clean up the nits.
+  - **B4 round 2:** sweep the ε level, and design a TA-compliant, data-driven optimistic initialisation.
