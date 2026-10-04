@@ -55,13 +55,14 @@ file and in `tools/` is for our own use. Keep them out of `submission.zip`.
 - The stock Part B agent crashes (`get_action` returns `None`, which makes `env.act` raise). That is expected.
 
 **Part A**
-- **A2:** V is stored mask-first as `V[mask, cell, r1, r2]`, not `(cells, R1, R2, 4)`. Each treasure layer is then one contiguous block, which is what A5's layered solve needs. Cells are the non-land cells.
+- **A2:** V is stored mask-first as `V[mask, cell, r1, r2]`, not `(cells, R1, R2, 4)`, so each treasure layer is one contiguous block. Cells are the non-land cells.
 - **A4:** the pirate expectation uses `np.einsum(..., optimize=False)`, which runs numpy's single-threaded loops, instead of matmul or tensordot (OpenBLAS can multithread). The ship stage is fused: Q[a] = q·Σ_d G_d + (ps−q)·G_a, giving max and argmax without stacking 4×4 arrays.
-- **A5:**
-  - Keep the per-sweep clock guard.
-  - Also catch `run.py`'s `TimeoutException` (match by class name) as a safety net. That keeps the last complete policy instead of scoring `None`.
+- **A5** (revised after the Gemini review; see `review/gemini_feedback_assessment.md`):
+  - **Done, P1:** before the exact sweeps, solve the pirate-free MDP over (mask, cell) with the exact wind, fort, treasure and step rules. Its values and greedy actions, broadcast over all pirate configurations, are the starting V and policy. It costs milliseconds and is capped at 10% of T.
+  - **Done, P2:** `learn_policy` catches `run.py`'s `TimeoutException` (matched by class name) as a safety net, so the last complete policy survives instead of scoring `None`. `self.V` and `self.policy` are only ever rebound to complete arrays.
+  - Keep the per-sweep clock guard: stop at 0.85·T, and don't start a sweep predicted (1.5 × the last sweep's time) to overrun.
+  - **Dropped after measurement:** layered solving by treasure mask (2–3× more sweeps and the worst anytime quality, because the start state is in the last layer), Gemini's BFS initialization (no gain), Gauss–Seidel (slower in wall-clock time with numpy), and the sparse pirate stencil (2–3× slower than einsum).
   - Anytime quality matters, since the 20% is ranked against other submissions at small budgets.
-  - Known gap: on a 30x30 grid with very large pirate regions (31.5M states, ~4 s per sweep), 60 s isn't enough for value to propagate from the fort to the start. Layered solving or a better initial V should fix this. Real tests are said to use small regions, where a sweep takes milliseconds.
 - **A7:** compare against the new baselines (6.0 and 1.7), using about 1000 evaluation runs (`tools/eval_a.py`).
 
 **Part B**
@@ -69,7 +70,8 @@ file and in `tools/` is for our own use. Keep them out of `submission.zip`.
 - **B3:**
   - Use the `discount_factor` passed to `Agent`, never a hard-coded 0.99.
   - Don't detect collisions by the −5 reward value. Use `done` before our own 1000-step counter runs out; a `done` exactly at the cap is truncation, so bootstrap there.
-- **B4:** no reward-derived optimistic init. Use either a generic constant or a value set from rewards actually observed during training.
+- **B2 sizing:** the table is 4·4·5⁴ = 10,000 states × 5 actions, i.e. 50,000 entries.
+- **B4:** no reward-derived optimistic init (TA rule), so no constant like 5.0. If we try optimism, derive it from rewards observed during training (for example, the largest per-step reward seen so far / (1−γ), with the γ given to the agent), and compare it against zero init. Every non-collision reward is positive, so zero init already makes unvisited actions look worse than visited ones.
 - **B6:** target is ~6 at 240 s. Also test smaller T and other γ values.
 
 ## Part A status (A1–A4 done)
