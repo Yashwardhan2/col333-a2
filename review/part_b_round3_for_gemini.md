@@ -214,7 +214,7 @@ We ran a design panel (3 independent designers, 2 judges, 1 synthesizer) under t
      - and/or α/ε schedules defined by environment steps rather than by T, so behaviour at a given amount of experience doesn't depend on the budget.
   3. **Run the external checker's Part B suites** (10 s per case, γ ∈ {0.5, 0.8, 0.95, 0.99, 0.999}), with the fixed-seed caveat from section 7.
   4. **Then write the report and build the submission.**
-- **Q4.** We expect the agent to behave sensibly at short T, because the α schedule depends on steps (α ≈ 0.5 early). But ε decays over T, so at T=10 the agent spends most of the 8.5 s in high-ε random driving. That's exactly what step 1 will measure.
+- **Q4.** We expect the agent to behave sensibly at short T, because the α schedule depends on steps (α ≈ 0.5 early). But ε decays over T, so the *fraction* of training spent exploring is the same at every T (ε > 0.5 for the first ~5.0 s of 8.5 s at T=10). What changes at small T is the step count: at T=10 the mostly greedy final phase is only a few tens of thousands of steps. That's exactly what step 1 will measure.
 
 ---
 
