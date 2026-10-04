@@ -306,3 +306,31 @@ Full write-up: `review/gemini_partb_round2_assessment.md`. Raw data: `tools/expe
 - **Proposals (not done):**
   - **B5:** add the net and a monotonic clock, keep 0.85·T, clean up the nits.
   - **B4 round 2:** sweep the ε level, and design a TA-compliant, data-driven optimistic initialisation.
+
+## B5 done; B4 lever A (exploration level): not adopted
+
+**B5 (`part_b/agent.py`):**
+- A name-matched `TimeoutException` net wraps all of training.
+- `time.monotonic()` is used for the deadline and the ε schedule.
+- `stop_frac` stays at 0.85; the time-based α branch and the stale comments were removed.
+- **Checks:**
+  - the update-logic unit test;
+  - 300 random-time SIGALRM interruptions of the real agent (0 escaped, 0 invalid values, at most 0.45 ms to return);
+  - the real `run.py` with its alarm forced mid-training still prints a score.
+
+**Lever A** (`tools/experiments/part_b/results/leverA_exploration_results.txt`; 3 runs each, γ=0.99, same batch as the tuned control):
+
+| Setting | T=60 | T=240 |
+|---|---|---|
+| tuned (control) | 5.29 | 7.04 |
+| constant ε 0.2, α 0.1 | +0.40 | −0.23 |
+| constant ε 0.3, α 0.1 | +0.25 | −0.20 |
+| constant ε 0.2, α 0.2 | +0.01 | +0.03 |
+| constant ε 0.3, α 0.2 | −0.45 | +0.21 |
+| constant ε 0.5, α 0.2 | −0.85 | +0.04 |
+| constant ε 0.5, α 0.1 | −1.11 | −1.36 |
+| constant ε 0.3, tuned α | −0.78 | −0.11 |
+| ε 1 → 0.3 over 0.5·T, α 0.1 | **−1.51** | **−2.28** |
+
+- **No setting beats the tuned agent at both budgets** beyond noise, so it stays.
+- **Robust finding:** a fully random start (ε=1) with a small α is very costly. With all Q values tied at 0, argmax picks action 0 (*speed up*), so a mostly greedy agent gathers data in fast states early; that's hidden optimism. This again points to the pessimistic Q₀ as the real bottleneck, which is what lever B (data-driven optimism) targets.
