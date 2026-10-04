@@ -43,7 +43,7 @@ def run(script, g):
     SCRIPT = script
     agent_module.HighwayEnv = FakeEnv
     ag = agent_module.Agent(HighwayEnv(), discount_factor=g)
-    ag.alpha = 1.0
+    ag.alpha_start = ag.alpha_end = 1.0
     ag.eps_start = ag.eps_end = 0.0          # purely greedy
     ag.learn_policy(0.3)
     return ag

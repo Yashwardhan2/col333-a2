@@ -35,7 +35,12 @@ class Agent:
         self.visits = [[0] * self.n_actions for _ in range(self.n_states)]
 
         # learning schedule
-        self.alpha = 0.2             # constant step size (measured: 0.2 > 0.15 > 0.1 > 0.05 at T=240)
+        # step size: linear from alpha_start to alpha_end, either over alpha_decay_steps
+        # environment steps (if > 0) or over alpha_decay_frac of the time budget
+        self.alpha_start = 0.2
+        self.alpha_end = 0.2
+        self.alpha_decay_steps = 0
+        self.alpha_decay_frac = 1.0
         self.eps_start = 1.0         # epsilon decays linearly with elapsed time ...
         self.eps_end = 0.01
         self.eps_decay_frac = 1.0    # ... reaching eps_end at this fraction of the budget
@@ -71,7 +76,9 @@ class Agent:
         deadline = start + 0.85 * time
         decay_time = self.eps_decay_frac * time
         Q, visits, rng = self.Q, self.visits, self.rng
-        g, alpha, n_actions = self.gamma, self.alpha, self.n_actions
+        g, n_actions = self.gamma, self.n_actions
+        a_start, a_end = self.alpha_start, self.alpha_end
+        alpha = a_start
         index = self._index
         eps = self.eps_start
         steps = 0
@@ -89,6 +96,11 @@ class Agent:
                     if now >= deadline:
                         break
                     eps = max(self.eps_end, self.eps_start - (self.eps_start - self.eps_end) * (now - start) / decay_time)
+                    if self.alpha_decay_steps > 0:
+                        progress = (self.stats['steps'] + steps) / self.alpha_decay_steps
+                    else:
+                        progress = (now - start) / (self.alpha_decay_frac * time)
+                    alpha = max(a_end, a_start - (a_start - a_end) * progress)
                 row = Q[i]
                 if rng.random() < eps:
                     a = rng.randrange(n_actions)
