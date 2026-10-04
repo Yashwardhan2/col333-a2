@@ -74,7 +74,7 @@ file and in `tools/` is for our own use. Keep them out of `submission.zip`.
 - **B4:** no reward-derived optimistic init (TA rule), so no constant like 5.0. If we try optimism, derive it from rewards observed during training (for example, the largest per-step reward seen so far / (1−γ), with the γ given to the agent), and compare it against zero init. Every non-collision reward is positive, so zero init already makes unvisited actions look worse than visited ones.
 - **B6:** target is ~6 at 240 s. Also test smaller T and other γ values.
 
-## Part A status (A1–A4 done; A5 P1 + P2 done)
+## Part A status (A1–A7 done)
 
 - `part_a/agent.py` implements exact factored value iteration.
 - **Validation:**
@@ -101,3 +101,21 @@ file and in `tools/` is for our own use. Keep them out of `submission.zip`.
 
 - The official `run.py` was run on test 3 at T=60 (score 7.35, 10 GIFs) and on test 1 at T=1 (score 6.15).
 - **Known limitation:** Python runs the alarm handler only after the current numpy call returns. When the safety net is needed, `learn_policy` can therefore overrun T by up to the length of one numpy call (0.4 s seen on the 31.5M-state grid). On realistic grids these calls take milliseconds.
+
+- **A6 (`get_action`):**
+  - O(1) dict lookups, about 1 µs per call (`env.step` takes 5.7 µs).
+  - The treasure mask is now built from `tuple()`-converted locations, so lists or tuples and any order give the same state. Before this, list inputs silently produced the wrong mask.
+  - An unrecognizable input (a pirate outside its region, the ship on land, `None`) returns the pirate-free policy's action, or UP, instead of raising. A crash there would make the whole evaluation score `None`.
+- **A7 (validation):**
+  - **Brute-force and fuzz** checks re-run on the final code: exact.
+  - **Public tests, final code (1000 runs):** TC1 6.07 ± 0.04, TC2 1.73 ± 0.06, TC3 7.35 ± 0.21.
+  - **`tools/stress_a.py`:**
+    - Inputs: 40 random layouts that `env.py` accepts (N 10–30, pirate regions of 1–60 cells, random ps, γ, rewards and pirate probabilities). They ran at T = 20 s, plus 8 more at N = 30 and T = 5 s, under SIGALRM.
+    - Results: no timeouts or crashes, and learning always stopped by 0.85·T. All 34 converged cases match Monte-Carlo returns from the real `env.py` within 3 standard errors. Peak memory was 402 MB, at 7.9M states.
+  - **Python version:** `vermin` reports that `agent.py` needs only Python 3.0+, so 3.10 is fine. The only imports are `time` and `numpy`.
+  - **GIF check:** the test 2 GIF shows a sensible route (times its crossing of the pirate columns, collects both treasures, reaches the fort in 102 steps).
+- **Open option (not done):** the time guard (0.85·T, with a 1.5× prediction of the next sweep) is conservative on huge grids. Seed 507 stopped at 1.8 s of 5 s. It could be loosened now that the safety net exists. This is raised as a question in the round-2 review document.
+- **Review documents:**
+  - `review/part_a_progress_for_review.md`: round 1, a snapshot from before A5.
+  - `review/gemini_feedback_assessment.md`: the round-1 assessment.
+  - `review/part_a_round2_for_gemini.md`: round 2, current code plus the Part B plan and starter `env.py`.

@@ -29,6 +29,8 @@ class Agent:
         # value function and greedy policy, indexed [mask, ship cell, p1 idx, p2 idx]
         self.V = np.zeros(self.shape)
         self.policy = np.zeros(self.shape, dtype=np.int8)
+        # pirate-free greedy policy [mask, ship cell], only used as a fallback
+        self.base_policy = np.zeros(self.shape[:2], dtype=np.int8)
 
     # ------------------------------------------------------------------ #
     # parsing (mirrors env.py exactly)
@@ -241,20 +243,25 @@ class Agent:
         # build complete arrays before rebinding so a timeout never leaves them half-written
         self.V = np.broadcast_to(Vr[:, :, None, None], self.shape).copy()
         self.policy = np.broadcast_to(arg[:, :, None, None], self.shape).copy()
+        self.base_policy = arg
 
     # ------------------------------------------------------------------ #
     # API used by run.py
     # ------------------------------------------------------------------ #
 
+    def _mask(self, treasure_locations):
+        present = {tuple(t) for t in treasure_locations}
+        m = 0
+        for t, loc in enumerate(self.treasures):
+            if loc in present:
+                m |= 1 << t
+        return m
+
     def _encode(self, ship_location, pirate_locations, treasure_locations):
         s = self.cell_idx[tuple(ship_location)]
         r1 = self.region_idx[0][tuple(pirate_locations[0])]
         r2 = self.region_idx[1][tuple(pirate_locations[1])]
-        m = 0
-        for t, loc in enumerate(self.treasures):
-            if loc in treasure_locations:
-                m |= 1 << t
-        return m, s, r1, r2
+        return self._mask(treasure_locations), s, r1, r2
 
     def get_action(self, ship_location, pirate_locations, treasure_locations) -> int:
         """
@@ -282,7 +289,16 @@ class Agent:
             This function may be called multiple times after
             `learn_policy()` has been executed.
         """
-        return int(self.policy[self._encode(ship_location, pirate_locations, treasure_locations)])
+        try:
+            return int(self.policy[self._encode(ship_location, pirate_locations, treasure_locations)])
+        except (KeyError, IndexError, TypeError):
+            # a state env.py should never produce: return a legal action rather
+            # than crash the evaluation, using the pirate-free policy if possible
+            try:
+                return int(self.base_policy[self._mask(treasure_locations),
+                                            self.cell_idx[tuple(ship_location)]])
+            except (KeyError, IndexError, TypeError):
+                return UP
 
     def learn_policy(self, time):
         """
