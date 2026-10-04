@@ -205,3 +205,24 @@ file and in `tools/` is for our own use. Keep them out of `submission.zip`.
 - The official `run.py` at T=60 runs fine (2 runs, 4.08) and writes GIFs. The car hugs an edge lane at speed 1 and covers about 353 units in 1000 steps.
 
 **Gap to the TA's ~6:** at speed 1 the most an episode can return is about 3, so B4 must make the car drive faster *and* crash less.
+
+## Part B review round 1 (Gemini): outcome
+
+Full write-up: `review/gemini_partb_round1_assessment.md`.
+
+- **"Slow driving gets you rear-ended": false.** Cars more than 0.5 behind are deleted every step. Crashes happen at speeds 2–4, never at 1, and mostly at 3–4 (where the agent spends only 1–4% of its time). Crash causes: caught up with a car ahead in our lane, or drove through it, about 85–100%; lane changes 0–13%; genuine rear-ends 0.
+- **"Decay ε by 0.2–0.3·T": false and harmful.**
+
+  | ε reaches 0.01 at | T=60 mean | T=240 mean |
+  |---|---|---|
+  | 0.8·T (current) | 3.87 | 5.21 |
+  | 0.3·T | 3.31 | 4.46 |
+  | 0.2·T | 2.70 | 4.01 |
+
+  More exploration is better.
+- **Correct:** the collision credit handles the `min_dist`=1 aliasing, the credit is exact for any γ, and dropping one bootstrap at the 1000-step limit is negligible.
+- **To test in B4:**
+  - ε floor at 0.05 or 0.1, and decay reaching it at 1.0·T;
+  - throughput;
+  - α between 0.05 and 0.2;
+  - a no-op default for never-updated states (A/B test only).
