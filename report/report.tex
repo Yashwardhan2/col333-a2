@@ -8,6 +8,7 @@
 \usepackage{tabularx}
 \usepackage{array}
 \usepackage{float}
+\usepackage{needspace}
 \usepackage[font=small,labelfont=bf]{caption}
 \usepackage{fancyhdr}
 \usepackage{amsmath}
@@ -184,18 +185,21 @@ link at cost 11.
 
 \subsection{OSPF (starting from Plan A)}
 
-\paragraph{Before the failure} (Plan A, from Part C):
+\needspace{10\baselineskip}
+\textbf{Before the failure} (Plan A, from Part C):
 
 \shot{fig9}{OSPF before failure: R1 \cmd{show ip route}, LAN~D at [110/3] via 10.0.12.2 (boxed).}
 \shot[0.75]{fig10}{OSPF before failure: \cmd{ping 192.168.4.10} from PC-A succeeds (TTL 125, three routers).}
 
-\paragraph{After the failure} (saved as \cmd{partD\_ospf\_linkdown.pkt}):
+\needspace{10\baselineskip}
+\textbf{After the failure} (saved as \cmd{partD\_ospf\_linkdown.pkt}):
 
 \shot{fig11}{OSPF with R2--R4 down: R1 \cmd{show ip route}. 10.0.24.0/30 has disappeared and LAN~D is now [110/8] via 10.0.12.2 (boxed).}
 \shot[0.65]{fig12}{OSPF with R2--R4 down: \cmd{ping 192.168.4.10} from PC-A succeeds (TTL 124, four routers).}
 \shot[0.7]{fig13}{OSPF with R2--R4 down: \cmd{tracert} shows the detour R1, R2 (10.0.12.2), R3 over the serial link (10.0.23.2), R4 (10.0.34.2), PC-D.}
 
-\paragraph{After the link is restored} (\cmd{no shutdown}, state not saved):
+\needspace{10\baselineskip}
+\textbf{After the link is restored} (\cmd{no shutdown}, state not saved):
 
 \shot[0.7]{fig14}{OSPF after restoring the link: LAN~D back at [110/3] via 10.0.12.2 (boxed), and 10.0.24.0/30 is back.}
 \shot[0.7]{fig15}{OSPF after restoring the link: \cmd{ping 192.168.4.10} from PC-A succeeds again with TTL 125.}
@@ -223,12 +227,14 @@ period.
 
 \subsection{RIPv2 (starting from Part B)}
 
-\paragraph{Before the failure} (from Part B):
+\needspace{10\baselineskip}
+\textbf{Before the failure} (from Part B):
 
 \shot{fig16}{RIPv2 before failure: R1 \cmd{show ip route}, LAN~D at [120/2] via 10.0.12.2 and 10.0.13.2 (boxed).}
 \shot[0.6]{fig17}{RIPv2 before failure: PC-A pings PC-B, PC-C and PC-D (192.168.4.10) successfully.}
 
-\paragraph{After the failure}, recorded after advancing more than 4 minutes of simulated time
+\needspace{10\baselineskip}
+\textbf{After the failure}, recorded after advancing more than 4 minutes of simulated time
 (saved as \cmd{partD\_rip\_linkdown.pkt}):
 
 \shot[0.7]{fig18}{RIPv2 with R2--R4 down: R1 \cmd{show ip route}. LAN~D is [120/2] via 10.0.13.2 only (boxed), and 10.0.24.0/30 is gone.}
